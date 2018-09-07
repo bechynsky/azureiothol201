@@ -8,6 +8,7 @@ using System.Diagnostics;
 using Microsoft.Azure.Devices.Client;
 using System.Timers;
 using System.Configuration;
+using Newtonsoft.Json;
 
 namespace CpuUsage2Azure
 {
@@ -19,7 +20,6 @@ namespace CpuUsage2Azure
 
         private static string _deviceConnectionString = null;
 
-        
         private static DeviceClient _deviceClient = null;
         private static Message _eventMessage = null;
 
@@ -31,7 +31,8 @@ namespace CpuUsage2Azure
 
             _deviceConnectionString = ConfigurationManager.ConnectionStrings["deviceConnectionString"].ToString();
 
-            _deviceClient = DeviceClient.CreateFromConnectionString(_deviceConnectionString, Microsoft.Azure.Devices.Client.TransportType.Http1);
+            _deviceClient = DeviceClient.CreateFromConnectionString(_deviceConnectionString, Microsoft.Azure.Devices.Client.TransportType.Mqtt);
+            _deviceClient.SetMethodHandlerAsync("setTimer", OnSetTimer, null);
 
             // If you get problem run "lodctr /r" from command prompt and restart computer
             // https://technet.microsoft.com/en-us/library/cc768048.aspx
@@ -39,7 +40,7 @@ namespace CpuUsage2Azure
             _ramCounter = new PerformanceCounter("Memory", "Available MBytes");
 
             // read CPU usage every second
-            _timer = new Timer(1000);
+            _timer = new Timer(10000);
             _timer.AutoReset = true;
             _timer.Elapsed += _timer_Elapsed;
             _timer.Start();
@@ -49,6 +50,15 @@ namespace CpuUsage2Azure
             {                
             }
         }
+
+        private static async Task<MethodResponse> OnSetTimer(MethodRequest methodRequest, object userContext)
+        {
+            SetTimerParameters stp = JsonConvert.DeserializeObject<SetTimerParameters>(methodRequest.DataAsJson);
+            _timer.Interval = stp.Interval * 1000;
+            Console.WriteLine("New interval: " + stp.Interval + " s.");
+            return new MethodResponse(200);
+        }
+
 
         private static async void _timer_Elapsed(object sender, ElapsedEventArgs e)
         {
@@ -66,5 +76,11 @@ namespace CpuUsage2Azure
             // send message
             await _deviceClient.SendEventAsync(_eventMessage);
         }
+    }
+
+    public class SetTimerParameters
+    {
+        [JsonProperty("interval")]
+        public int Interval { get; set; }
     }
 }
